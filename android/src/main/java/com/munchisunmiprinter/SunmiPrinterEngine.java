@@ -3,6 +3,8 @@ package com.munchisunmiprinter;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.RemoteException;
 import android.util.Base64;
 import android.util.Log;
@@ -20,6 +22,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 final class SunmiPrinterEngine implements SunmiPrintQueueRuntime.TaskProcessor {
     private static final String LOG_TAG = "MunchiSunmiPrinter";
@@ -28,6 +31,7 @@ final class SunmiPrinterEngine implements SunmiPrintQueueRuntime.TaskProcessor {
     private static final String CATEGORY_PRINTER = "PRINTER";
     private static final long BIND_TIMEOUT_MS = 5000L;
     private static final long CALLBACK_TIMEOUT_MS = 5000L;
+    private static final long MAIN_THREAD_TIMEOUT_MS = 5000L;
     private static final int ALIGN_LEFT = 0;
     private static final int ALIGN_CENTER = 1;
     private static final int ALIGN_RIGHT = 2;
@@ -135,7 +139,7 @@ final class SunmiPrinterEngine implements SunmiPrintQueueRuntime.TaskProcessor {
         }
 
         try {
-            InnerPrinterManager.getInstance().unBindService(appContext, printerCallback);
+            unbindPrinterServiceOnMainThread();
         } catch (InnerPrinterException | RuntimeException ignored) {
         }
     }
@@ -359,7 +363,7 @@ final class SunmiPrinterEngine implements SunmiPrintQueueRuntime.TaskProcessor {
                 bindingInFlight = true;
 
                 try {
-                    boolean result = InnerPrinterManager.getInstance().bindService(appContext, printerCallback);
+                    boolean result = bindPrinterServiceOnMainThread();
                     if (!result) {
                         bindingInFlight = false;
                         throw new SunmiPrinterTaskException(
@@ -475,6 +479,113 @@ final class SunmiPrinterEngine implements SunmiPrintQueueRuntime.TaskProcessor {
             }
 
             return printerService;
+        }
+    }
+
+    private boolean bindPrinterServiceOnMainThread() throws InnerPrinterException {
+        final CountDownLatch mainThreadLatch = new CountDownLatch(1);
+        final AtomicBoolean bindResult = new AtomicBoolean(false);
+        final AtomicReference<Throwable> bindThrowable = new AtomicReference<>(null);
+
+        Runnable bindRunnable = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    bindResult.set(
+                        InnerPrinterManager.getInstance().bindService(appContext, printerCallback)
+                    );
+                } catch (Throwable throwable) {
+                    bindThrowable.set(throwable);
+                } finally {
+                    mainThreadLatch.countDown();
+                }
+            }
+        };
+
+        runOnMainThread(bindRunnable);
+        awaitMainThreadWork(mainThreadLatch, "bind");
+
+        Throwable throwable = bindThrowable.get();
+        if (throwable instanceof InnerPrinterException) {
+            throw (InnerPrinterException) throwable;
+        }
+        if (throwable instanceof RuntimeException) {
+            throw (RuntimeException) throwable;
+        }
+        if (throwable instanceof Error) {
+            throw (Error) throwable;
+        }
+
+        return bindResult.get();
+    }
+
+    private void unbindPrinterServiceOnMainThread() throws InnerPrinterException {
+        final CountDownLatch mainThreadLatch = new CountDownLatch(1);
+        final AtomicReference<Throwable> unbindThrowable = new AtomicReference<>(null);
+
+        Runnable unbindRunnable = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    InnerPrinterManager.getInstance().unBindService(appContext, printerCallback);
+                } catch (Throwable throwable) {
+                    unbindThrowable.set(throwable);
+                } finally {
+                    mainThreadLatch.countDown();
+                }
+            }
+        };
+
+        runOnMainThread(unbindRunnable);
+        awaitMainThreadWork(mainThreadLatch, "unbind");
+
+        Throwable throwable = unbindThrowable.get();
+        if (throwable instanceof InnerPrinterException) {
+            throw (InnerPrinterException) throwable;
+        }
+        if (throwable instanceof RuntimeException) {
+            throw (RuntimeException) throwable;
+        }
+        if (throwable instanceof Error) {
+            throw (Error) throwable;
+        }
+    }
+
+    private void runOnMainThread(Runnable runnable) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            runnable.run();
+            return;
+        }
+
+        new Handler(Looper.getMainLooper()).post(runnable);
+    }
+
+    private void awaitMainThreadWork(
+        CountDownLatch latch,
+        String operation
+    ) {
+        try {
+            if (!latch.await(MAIN_THREAD_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                throw new SunmiPrinterTaskException(
+                    "DEVICES_ERR_CONNECT",
+                    "Timed out while waiting for SUNMI " + operation + " on the main thread.",
+                    CATEGORY_DEVICE,
+                    null,
+                    "DEVICES_ERR_CONNECT",
+                    "Timed out while waiting for SUNMI " + operation + " on the main thread."
+                );
+            }
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new SunmiPrinterTaskException(
+                "DEVICES_ERR_CONNECT",
+                "Interrupted while waiting for SUNMI " + operation + " on the main thread.",
+                CATEGORY_DEVICE,
+                null,
+                "DEVICES_ERR_CONNECT",
+                "Interrupted while waiting for SUNMI " + operation + " on the main thread.",
+                error
+            );
         }
     }
 
