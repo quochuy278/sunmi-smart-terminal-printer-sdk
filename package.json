@@ -1,0 +1,66 @@
+{
+  "name": "@munchi_oy/sunmi-smart-terminal-printer-sdk",
+  "version": "1.0.0",
+  "description": "React Native bridge for the embedded printer on SUNMI smart terminals",
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "react-native": "./dist/index.js",
+  "exports": {
+    ".": {
+      "react-native": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "android",
+    "ios",
+    "munchi-sunmi-printer.podspec",
+    "react-native.config.js",
+    "README.md"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build:runtime": "tsup",
+    "build:types": "tsc -p tsconfig.build.json",
+    "build": "pnpm run clean && pnpm run build:runtime && pnpm run build:types",
+    "validate": "pnpm test && pnpm typecheck && pnpm build",
+    "yalc:publish": "pnpm build && pnpm dlx yalc publish --push",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "publish:package": "bash scripts/publish-package.sh",
+    "release:patch": "bash scripts/release-package.sh patch",
+    "release:minor": "bash scripts/release-package.sh minor",
+    "release:major": "bash scripts/release-package.sh major",
+    "release:prerelease": "bash scripts/release-package.sh prerelease",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "react-native",
+    "android",
+    "sunmi",
+    "printer"
+  ],
+  "author": "Munchi Oy",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/node": "^24.10.1",
+    "react": "19.2.0",
+    "react-native": "0.83.6",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-native": ">=0.76"
+  }
+}
